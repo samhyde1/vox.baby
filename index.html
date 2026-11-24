@@ -1,0 +1,52 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>vox.baby</title><style>html,body{margin:0;height:100%;background:#000;overflow:hidden}canvas{display:block;width:100vw;height:100vh}</style></head><body><canvas id="c"></canvas><script>
+const VERT=`attribute vec2 a; void main(){ gl_Position = vec4(a, 0.0, 1.0); }`;
+const FRAG=`precision highp float;
+uniform vec2 uRes; uniform float uTime; uniform float uCols; uniform vec2 uMouse; uniform float uLamp;
+uniform vec3 uGlow; uniform vec3 uDeep; uniform vec3 uGround;
+void main(){
+  vec2 p = gl_FragCoord.xy / uRes.y;
+  float aspect = uRes.x / uRes.y;
+  float t = uTime;
+  float rows = uCols;
+  float h = 1.0 / rows;
+  float id = floor(p.y / h);
+  float s = fract(p.y / h) - 0.5;
+  float centre = (id + 0.5) * h;
+  // the light behind: two broad glows drifting across, and a lamp under the pointer
+  vec2 m = uMouse / uRes.y;
+  float bend = pow(abs(s) * 2.0, 1.5);
+  // cylinder lens: look through a squeezed, mirrored slice of what's behind
+  vec2 look = vec2(p.x, centre - s * h * 1.7);
+  vec2 c1 = vec2(aspect * (0.5 + 0.32 * sin(t * 0.11)), 0.62 + 0.18 * sin(t * 0.07));
+  vec2 c2 = vec2(aspect * (0.5 + 0.38 * cos(t * 0.08 + 2.0)), 0.3 + 0.15 * cos(t * 0.1));
+  vec2 d1 = (look - c1) * vec2(0.55, 1.6), d2 = (look - c2) * vec2(0.6, 1.8), dm = (look - m) * vec2(1.2, 2.2);
+  float L = exp(-dot(d1, d1) / 0.08) + 0.8 * exp(-dot(d2, d2) / 0.06) + 1.3 * uLamp * exp(-dot(dm, dm) / 0.03);
+  // each slat is brightest along its middle and falls into shadow at the seams
+  float body = pow(cos(3.14159 * s), 0.7);
+  float seam = smoothstep(0.46, 0.5, abs(s));
+  vec3 col = uGround + uDeep * (0.45 + L * 1.1) * body + uGlow * L * body * (0.55 + 0.45 * (1.0 - bend));
+  col += vec3(1.0) * pow(max(L * body - 0.9, 0.0), 2.0) * 0.5;
+  col = mix(col, uGround * 0.3, seam);
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+const PAL=["#8f9bff", "#3a3fd6", "#020208"];
+const COLS=8;
+
+const rgb=h=>{const v=parseInt(h.slice(1),16);return[((v>>16)&255)/255,((v>>8)&255)/255,(v&255)/255]};
+const c=document.getElementById('c'),gl=c.getContext('webgl',{antialias:false,alpha:false});
+const mk=(t,s)=>{const x=gl.createShader(t);gl.shaderSource(x,s);gl.compileShader(x);return x};
+const pr=gl.createProgram();gl.attachShader(pr,mk(gl.VERTEX_SHADER,VERT));gl.attachShader(pr,mk(gl.FRAGMENT_SHADER,FRAG));
+gl.bindAttribLocation(pr,0,'a');gl.linkProgram(pr);gl.useProgram(pr);
+gl.bindBuffer(gl.ARRAY_BUFFER,gl.createBuffer());gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,2,gl.FLOAT,false,0,0);
+const U=n=>gl.getUniformLocation(pr,n);
+gl.uniform3f(U('uGlow'),...rgb(PAL[0]));gl.uniform3f(U('uDeep'),...rgb(PAL[1]));gl.uniform3f(U('uGround'),...rgb(PAL[2]));
+let t=12,m={x:0,y:0,tx:0,ty:0,l:0,tl:0},last=0;
+function size(){const s=Math.min(devicePixelRatio||1,2);c.width=innerWidth*s;c.height=innerHeight*s;gl.viewport(0,0,c.width,c.height);
+ gl.uniform2f(U('uRes'),c.width,c.height);gl.uniform1f(U('uCols'),innerWidth<640?Math.max(4,Math.round(COLS*0.55)):COLS)}
+size();addEventListener('resize',size);
+addEventListener('pointermove',e=>{m.tx=e.clientX/innerWidth*c.width;m.ty=(1-e.clientY/innerHeight)*c.height;if(!m.l){m.x=m.tx;m.y=m.ty}m.tl=1});
+(function f(now){const dt=last?Math.min(.1,(now-last)/1000):.016;last=now;t+=dt;m.x+=(m.tx-m.x)*.12;m.y+=(m.ty-m.y)*.12;m.l+=(m.tl-m.l)*.06;
+ gl.uniform1f(U('uTime'),t);gl.uniform2f(U('uMouse'),m.x,m.y);gl.uniform1f(U('uLamp'),m.l);gl.drawArrays(gl.TRIANGLES,0,3);requestAnimationFrame(f)})(0);
+</script><div style="position:fixed;inset:0;z-index:10;display:grid;place-items:center;pointer-events:none"><h1 style="margin:0;color:#fff;font:600 clamp(44px,9vw,112px)/1 -apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',sans-serif;letter-spacing:-.035em;text-shadow:0 0 40px rgba(0,0,0,.55)">vox.baby</h1></div></body></html>
